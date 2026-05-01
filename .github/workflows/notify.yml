@@ -1,7 +1,7 @@
 name: Notion Intensive Monitor
 on:
   schedule:
-    # 1. 평일(월-금) 09:00 ~ 18:00 KST (UTC 00:00 ~ 09:00): 6분 간격 (가장 빈번함)
+    # 1. 평일(월-금) 09:00 ~ 18:00 KST (UTC 00:00 ~ 09:00): 6분 간격
     - cron: '*/6 0-8 * * 1-5'
     # 2. 평일(월-금) 18:00 ~ 21:00 KST (UTC 09:00 ~ 12:00): 30분 간격
     - cron: '*/30 9-11 * * 1-5'
@@ -14,14 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # 이전 실행에서 저장된 캐시(last_run_time.txt) 복원
+      - name: Restore last run time
+        uses: actions/cache/restore@v4
+        with:
+          path: last_run_time.txt
+          key: notion-cache-${{ github.run_id }}
+          restore-keys: |
+            notion-cache-
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          
       - name: Install dependencies
         run: pip install requests
+        
       - name: Run Script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python main.py
+
+      # 실행 성공 시 타임스탬프 파일을 캐시에 저장
+      - name: Save last run time
+        uses: actions/cache/save@v4
+        if: success()
+        with:
+          path: last_run_time.txt
+          key: notion-cache-${{ github.run_id }}
