@@ -1,0 +1,27 @@
+name: Notion Intensive Monitor
+on:
+  schedule:
+    # 1. 평일(월-금) 09:00 ~ 18:00 KST (UTC 00:00 ~ 09:00): 6분 간격 (가장 빈번함)
+    - cron: '*/6 0-8 * * 1-5'
+    # 2. 평일(월-금) 18:00 ~ 21:00 KST (UTC 09:00 ~ 12:00): 30분 간격
+    - cron: '*/30 9-11 * * 1-5'
+    # 3. 주말(토-일) 전시간대: 1시간 간격
+    - cron: '0 * * * 0,6'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Run Script
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python main.py
