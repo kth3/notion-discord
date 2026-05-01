@@ -143,7 +143,7 @@ def run():
             # 3. 만약 생성된 시간 자체가 threshold 이후라면, 새 페이지
             if created_time > threshold:
                 title_icon = f"🆕 {page_icon}"
-                summary = "새로운 페이지가 생성되었습니다."
+                summary = "문서 추가"
             else:
                 title_icon = page_icon
                 summary = get_changed_content(page['id'], threshold)
