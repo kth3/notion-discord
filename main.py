@@ -16,7 +16,7 @@ user_cache = {}
 def get_dynamic_threshold():
     """
     파일이나 캐시에 의존하지 않고, 현재 실행 시각과 요일을 바탕으로 
-    검색해야 할 과거 임계 시간(Threshold)을 동적으로 계산합니다.
+    검색해야 할 과거 임계 시간(Threshold)을 동적으로 계산
     """
     now_utc = datetime.now(timezone.utc)
     now_kst = now_utc.astimezone(timezone(timedelta(hours=9)))
@@ -24,7 +24,7 @@ def get_dynamic_threshold():
     weekday = now_kst.weekday() # 0(월) ~ 4(금), 5(토) ~ 6(일)
     hour = now_kst.hour
     
-    # 깃허브 액션의 크론 지연(1~2분)을 고려해 스케줄 간격보다 2~5분 더 넉넉하게(버퍼) 잡습니다.
+    # 깃허브 액션의 크론 지연(1~2분)을 고려해 스케줄 간격보다 2~5분 더 넉넉하게 잡습니다.
     if weekday < 5: 
         # 평일 스케줄
         if 9 <= hour < 18:
@@ -87,9 +87,9 @@ def get_changed_content(page_id, threshold):
             return full_text[:200] + "..." if len(full_text) > 200 else full_text
             
         if recent_block_exists:
-            return "변경된 텍스트 내용 없음 (하위 계층, 이미지, 속성 등 변경)"
+            return "텍스트 외 항목 변경"
             
-        return "기존 콘텐츠 삭제 또는 페이지 구조(위치) 변경됨"
+        return "기존 내용 삭제 또는 페이지 위치 변경"
         
     except Exception:
         return "본문 로드 실패"
@@ -107,7 +107,7 @@ def get_page_title(page):
     return title
 
 def run():
-    # 파일이나 캐시를 읽을 필요 없이 함수 하나로 임계 시간을 결정합니다.
+    # 파일이나 캐시를 읽을 필요 없이 함수 하나로 임계 시간을 결정
     threshold = get_dynamic_threshold()
     
     search_url = "https://api.notion.com/v1/search"
