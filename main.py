@@ -95,7 +95,20 @@ def get_page_title(page):
             title = t_list[0]['plain_text']
             
     return title
-
+    
+def get_page_icon(page):
+    """페이지에 설정된 이모지 아이콘을 가져옵니다. 없거나 이미지인 경우 기본값을 반환합니다."""
+    icon_data = page.get('icon')
+    
+    if not icon_data:
+        return "📄"
+        
+    if icon_data.get('type') == 'emoji':
+        return icon_data.get('emoji')
+        
+    # 커스텀 업로드 이미지나 노션 SVG 아이콘은 디스코드 텍스트로 표현할 수 없으므로 기본값 처리
+    return "📄"
+    
 def run():
     now_utc = datetime.now(timezone.utc)
     threshold = get_threshold()
@@ -114,27 +127,36 @@ def run():
 
     for page in results:
         last_edited = datetime.fromisoformat(page['last_edited_time'].replace('Z', '+00:00'))
+        # 1. 페이지가 처음 '생성된 시간'도 가져옵니다.
+        created_time = datetime.fromisoformat(page['created_time'].replace('Z', '+00:00'))
         
         if last_edited > threshold:
             title = get_page_title(page)
-            
             author_id = page.get('last_edited_by', {}).get('id')
             author = get_user_name(author_id)
-            
-            summary = get_changed_content(page['id'], threshold)
             page_url = page['url']
-            
             kst_time = last_edited.astimezone(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # 2. 페이지 아이콘 추출
+            page_icon = get_page_icon(page)
+            
+            # 3. 만약 생성된 시간 자체가 threshold 이후라면, 새 페이지
+            if created_time > threshold:
+                title_icon = f"🆕 {page_icon}"
+                summary = "새로운 페이지가 생성되었습니다."
+            else:
+                title_icon = page_icon
+                summary = get_changed_content(page['id'], threshold)
             
             discord_msg = {
                 "embeds": [{
-                    "title": f"📄{title}",
+                    "title": f"{title_icon} {title}", 
                     "url": page_url,
                     "color": 3447003,
                     "fields": [
-                        {"name": "👤 수정자", "value": author, "inline": True},
-                        {"name": "⏰ 수정 시각 (KST)", "value": kst_time, "inline": True},
-                        {"name": "📝 변경 내용 요약", "value": summary, "inline": False}
+                        {"name": "👤 작성자", "value": author, "inline": True},
+                        {"name": "⏰ 시간", "value": kst_time, "inline": True},
+                        {"name": "📝 내용 요약", "value": summary, "inline": False}
                     ],
                     "footer": {"text": "Notion Auto Monitor"}
                 }]
