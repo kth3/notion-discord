@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime, timedelta, timezone
 import os
+import time  # 추가: 지연 대기를 위한 time 모듈
 
 NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
 DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK')
@@ -163,7 +164,9 @@ def run():
             }
             
             try:
-                requests.post(DISCORD_WEBHOOK, json=discord_msg)
+                response = requests.post(DISCORD_WEBHOOK, json=discord_msg)
+                # 디스코드 API Rate Limit 방지: 각 요청 사이에 1초 대기
+                time.sleep(1)
             except Exception:
                 pass
 
