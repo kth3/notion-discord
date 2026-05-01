@@ -14,7 +14,6 @@ headers = {
 user_cache = {}
 
 def get_user_name(user_id):
-    """유저 ID를 바탕으로 노션 API에 한 번 더 접근하여 실제 이름을 가져옵니다."""
     if not user_id:
         return "익명 사용자"
     if user_id in user_cache:
@@ -29,34 +28,36 @@ def get_user_name(user_id):
     except:
         return "알 수 없는 사용자"
 
-def get_content_summary(page_id):
-    """페이지 하위 블록을 최대 20개까지 읽어와 전체 텍스트 내용을 이어붙입니다."""
+def get_changed_content(page_id, threshold):
+    """페이지 내에서 최근에 수정된 1 depth 블록만 추출합니다."""
     try:
-        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=20"
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=50"
         res = requests.get(url, headers=headers).json()
         blocks = res.get('results', [])
         
         texts = []
         for block in blocks:
-            b_type = block.get('type')
-            rich_text = block.get(b_type, {}).get('rich_text', [])
+            block_edited = datetime.fromisoformat(block['last_edited_time'].replace('Z', '+00:00'))
             
-            if rich_text:
-                plain_text = "".join([t.get('plain_text', '') for t in rich_text]).strip()
-                if plain_text:
-                    texts.append(plain_text)
-                    
+            # 임계 시간(최근 15분) 내에 수정된 블록만 필터링
+            if block_edited > threshold:
+                b_type = block.get('type')
+                rich_text = block.get(b_type, {}).get('rich_text', [])
+                
+                if rich_text:
+                    plain_text = "".join([t.get('plain_text', '') for t in rich_text]).strip()
+                    if plain_text:
+                        texts.append(plain_text)
+                        
         if not texts:
-            return "본문 내용 없음"
+            return "변경된 텍스트 내용 없음 (하위 계층, 이미지, 속성 등 변경)"
             
-        # 여러 블록의 텍스트를 슬래시로 구분하여 합칩니다.
         full_text = " / ".join(texts)
         return full_text[:200] + "..." if len(full_text) > 200 else full_text
     except:
         return "본문 로드 실패"
 
 def get_page_title(page):
-    """페이지 제목 추출"""
     props = page.get('properties', {})
     title = "제목 없음"
     title_key = next((k for k, v in props.items() if v.get('type') == 'title'), None)
@@ -83,23 +84,23 @@ def run():
         if last_edited > threshold:
             title = get_page_title(page)
             
-            # 작성자의 고유 ID를 파악한 후, 별도 함수를 통해 이름을 추출합니다.
             author_id = page.get('last_edited_by', {}).get('id')
             author = get_user_name(author_id)
             
-            summary = get_content_summary(page['id'])
+            # 페이지의 변경 감지 시점인 threshold를 동일하게 전달하여 비교
+            summary = get_changed_content(page['id'], threshold)
             page_url = page['url']
             kst_time = last_edited.astimezone(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
             
             discord_msg = {
                 "embeds": [{
-                    "title": f"🔔 변경 감지: {title}",
+                    "title": f"📄{title}",
                     "url": page_url,
                     "color": 3447003,
                     "fields": [
-                        {"name": "👤 수정자", "value": author, "inline": True},
-                        {"name": "⏰ 수정 시각 (KST)", "value": kst_time, "inline": True},
-                        {"name": "📝 내용 요약", "value": summary, "inline": False}
+                        {"name": 👤"수정자", "value": author, "inline": True},
+                        {"name": ⏰"수정 시각 (KST)", "value": kst_time, "inline": True},
+                        {"name": 📝"변경 내용 요약", "value": summary, "inline": False}
                     ],
                     "footer": {"text": "Notion Auto Monitor"}
                 }]
