@@ -98,9 +98,9 @@ def run():
                     "url": page_url,
                     "color": 3447003,
                     "fields": [
-                        {"name": 👤"수정자", "value": author, "inline": True},
-                        {"name": ⏰"수정 시각 (KST)", "value": kst_time, "inline": True},
-                        {"name": 📝"변경 내용 요약", "value": summary, "inline": False}
+                        {"name": "👤 수정자", "value": author, "inline": True},
+                        {"name": "⏰ 수정 시각 (KST)", "value": kst_time, "inline": True},
+                        {"name": "📝 변경 내용 요약", "value": summary, "inline": False}
                     ],
                     "footer": {"text": "Notion Auto Monitor"}
                 }]
