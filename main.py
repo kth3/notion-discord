@@ -2,8 +2,8 @@ import requests
 from datetime import datetime, timedelta, timezone
 import os
 
-NOTION_TOKEN = os.environ['NOTION_TOKEN']
-DISCORD_WEBHOOK = os.environ['DISCORD_WEBHOOK']
+NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
+DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK')
 
 headers = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -12,6 +12,37 @@ headers = {
 }
 
 user_cache = {}
+
+def get_dynamic_threshold():
+    """
+    파일이나 캐시에 의존하지 않고, 현재 실행 시각과 요일을 바탕으로 
+    검색해야 할 과거 임계 시간(Threshold)을 동적으로 계산합니다.
+    """
+    now_utc = datetime.now(timezone.utc)
+    now_kst = now_utc.astimezone(timezone(timedelta(hours=9)))
+    
+    weekday = now_kst.weekday() # 0(월) ~ 4(금), 5(토) ~ 6(일)
+    hour = now_kst.hour
+    
+    # 깃허브 액션의 크론 지연(1~2분)을 고려해 스케줄 간격보다 2~5분 더 넉넉하게(버퍼) 잡습니다.
+    if weekday < 5: 
+        # 평일 스케줄
+        if 9 <= hour < 18:
+            delta_mins = 6 + 2        # 6분 간격 실행 + 2분 버퍼 (8분 전까지 탐색)
+        elif 18 <= hour < 22:
+            delta_mins = 30 + 5       # 30분 간격 실행 + 5분 버퍼 (35분 전까지 탐색)
+        else:
+            # 밤 21시 종료 후 다음 날 아침 09시에 첫 실행될 때 (전날 밤의 내역 모두 추적)
+            delta_mins = 12 * 60 + 30 # 12시간 + 30분 버퍼
+    else: 
+        # 주말 스케줄
+        if 9 <= hour < 22:
+            delta_mins = 60 + 5       # 1시간 간격 실행 + 5분 버퍼 (65분 전까지 탐색)
+        else:
+            # 밤 21시 종료 후 다음 날 아침 09시에 첫 실행될 때
+            delta_mins = 12 * 60 + 30
+
+    return now_utc - timedelta(minutes=delta_mins)
 
 def get_user_name(user_id):
     if not user_id:
@@ -25,22 +56,24 @@ def get_user_name(user_id):
         name = res.get('name', '알 수 없는 사용자')
         user_cache[user_id] = name
         return name
-    except:
+    except Exception:
         return "알 수 없는 사용자"
 
 def get_changed_content(page_id, threshold):
-    """페이지 내에서 최근에 수정된 1 depth 블록만 추출합니다."""
     try:
-        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=50"
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=100"
         res = requests.get(url, headers=headers).json()
         blocks = res.get('results', [])
         
         texts = []
+        recent_block_exists = False
+        
         for block in blocks:
             block_edited = datetime.fromisoformat(block['last_edited_time'].replace('Z', '+00:00'))
             
-            # 임계 시간(최근 15분) 내에 수정된 블록만 필터링
+            # 동적으로 계산된 threshold 시간과 대조합니다.
             if block_edited > threshold:
+                recent_block_exists = True
                 b_type = block.get('type')
                 rich_text = block.get(b_type, {}).get('rich_text', [])
                 
@@ -49,25 +82,33 @@ def get_changed_content(page_id, threshold):
                     if plain_text:
                         texts.append(plain_text)
                         
-        if not texts:
+        if texts:
+            full_text = " / ".join(texts)
+            return full_text[:200] + "..." if len(full_text) > 200 else full_text
+            
+        if recent_block_exists:
             return "변경된 텍스트 내용 없음 (하위 계층, 이미지, 속성 등 변경)"
             
-        full_text = " / ".join(texts)
-        return full_text[:200] + "..." if len(full_text) > 200 else full_text
-    except:
+        return "기존 콘텐츠 삭제 또는 페이지 구조(위치) 변경됨"
+        
+    except Exception:
         return "본문 로드 실패"
 
 def get_page_title(page):
     props = page.get('properties', {})
     title = "제목 없음"
     title_key = next((k for k, v in props.items() if v.get('type') == 'title'), None)
+    
     if title_key:
         t_list = props[title_key].get('title', [])
-        if t_list: title = t_list[0]['plain_text']
+        if t_list: 
+            title = t_list[0]['plain_text']
+            
     return title
 
 def run():
-    threshold = datetime.now(timezone.utc) - timedelta(minutes=15)
+    # 파일이나 캐시를 읽을 필요 없이 함수 하나로 임계 시간을 결정합니다.
+    threshold = get_dynamic_threshold()
     
     search_url = "https://api.notion.com/v1/search"
     payload = {
@@ -75,8 +116,11 @@ def run():
         "sort": {"direction": "descending", "timestamp": "last_edited_time"}
     }
     
-    response = requests.post(search_url, headers=headers, json=payload).json()
-    results = response.get('results', [])
+    try:
+        response = requests.post(search_url, headers=headers, json=payload).json()
+        results = response.get('results', [])
+    except Exception:
+        results = []
 
     for page in results:
         last_edited = datetime.fromisoformat(page['last_edited_time'].replace('Z', '+00:00'))
@@ -87,9 +131,9 @@ def run():
             author_id = page.get('last_edited_by', {}).get('id')
             author = get_user_name(author_id)
             
-            # 페이지의 변경 감지 시점인 threshold를 동일하게 전달하여 비교
             summary = get_changed_content(page['id'], threshold)
             page_url = page['url']
+            
             kst_time = last_edited.astimezone(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
             
             discord_msg = {
@@ -105,7 +149,11 @@ def run():
                     "footer": {"text": "Notion Auto Monitor"}
                 }]
             }
-            requests.post(DISCORD_WEBHOOK, json=discord_msg)
+            
+            try:
+                requests.post(DISCORD_WEBHOOK, json=discord_msg)
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     run()
