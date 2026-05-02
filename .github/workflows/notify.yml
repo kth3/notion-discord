@@ -13,18 +13,11 @@ on:
 
 jobs:
   monitor:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
-      # 이전 실행에서 저장된 캐시(last_run_time.txt) 복원
-      - name: Restore last run time
-        uses: actions/cache/restore@v4
         with:
-          path: last_run_time.txt
-          key: notion-cache-${{ github.run_id }}
-          restore-keys: |
-            notion-cache-
+          clean: false 
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,11 +32,3 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python main.py
-
-      # 실행 성공 시 타임스탬프 파일을 캐시에 저장
-      - name: Save last run time
-        uses: actions/cache/save@v4
-        if: success()
-        with:
-          path: last_run_time.txt
-          key: notion-cache-${{ github.run_id }}
